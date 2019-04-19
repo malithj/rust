@@ -6,9 +6,10 @@ use crate::cell::RefCell;
 use crate::fmt;
 use crate::io::lazy::Lazy;
 use crate::io::{self, Initializer, BufReader, LineWriter, IoVec, IoVecMut};
-use crate::sync::{Arc, Mutex, MutexGuard};
+use crate::sync::Arc;
 use crate::sys::stdio;
-use crate::sys_common::remutex::{ReentrantMutex, ReentrantMutexGuard};
+use crate::panic::{UnwindSafe, RefUnwindSafe};
+use crate::parking_lot::{Mutex, MutexGuard, ReentrantMutex, ReentrantMutexGuard};
 use crate::thread::LocalKey;
 
 thread_local! {
@@ -242,9 +243,7 @@ pub struct StdinLock<'a> {
 pub fn stdin() -> Stdin {
     static INSTANCE: Lazy<Mutex<BufReader<Maybe<StdinRaw>>>> = Lazy::new();
     return Stdin {
-        inner: unsafe {
-            INSTANCE.get(stdin_init).expect("cannot access stdin during shutdown")
-        },
+        inner: INSTANCE.get(stdin_init).expect("cannot access stdin during shutdown"),
     };
 
     fn stdin_init() -> Arc<Mutex<BufReader<Maybe<StdinRaw>>>> {
@@ -285,7 +284,7 @@ impl Stdin {
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn lock(&self) -> StdinLock<'_> {
-        StdinLock { inner: self.inner.lock().unwrap_or_else(|e| e.into_inner()) }
+        StdinLock { inner: self.inner.lock() }
     }
 
     /// Locks this handle and reads a line of input into the specified buffer.
@@ -466,9 +465,7 @@ pub struct StdoutLock<'a> {
 pub fn stdout() -> Stdout {
     static INSTANCE: Lazy<ReentrantMutex<RefCell<LineWriter<Maybe<StdoutRaw>>>>> = Lazy::new();
     return Stdout {
-        inner: unsafe {
-            INSTANCE.get(stdout_init).expect("cannot access stdout during shutdown")
-        },
+        inner: INSTANCE.get(stdout_init).expect("cannot access stdout during shutdown"),
     };
 
     fn stdout_init() -> Arc<ReentrantMutex<RefCell<LineWriter<Maybe<StdoutRaw>>>>> {
@@ -504,7 +501,7 @@ impl Stdout {
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn lock(&self) -> StdoutLock<'_> {
-        StdoutLock { inner: self.inner.lock().unwrap_or_else(|e| e.into_inner()) }
+        StdoutLock { inner: self.inner.lock() }
     }
 }
 
@@ -533,6 +530,12 @@ impl Write for Stdout {
         self.lock().write_fmt(args)
     }
 }
+
+#[stable(feature = "rust1", since = "1.0.0")]
+impl UnwindSafe for Stdout {}
+#[stable(feature = "rust1", since = "1.0.0")]
+impl RefUnwindSafe for Stdout {}
+
 #[stable(feature = "rust1", since = "1.0.0")]
 impl Write for StdoutLock<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
@@ -552,6 +555,11 @@ impl fmt::Debug for StdoutLock<'_> {
         f.pad("StdoutLock { .. }")
     }
 }
+
+#[stable(feature = "rust1", since = "1.0.0")]
+impl UnwindSafe for StdoutLock<'_> {}
+#[stable(feature = "rust1", since = "1.0.0")]
+impl RefUnwindSafe for StdoutLock<'_> {}
 
 /// A handle to the standard error stream of a process.
 ///
@@ -625,9 +633,7 @@ pub struct StderrLock<'a> {
 pub fn stderr() -> Stderr {
     static INSTANCE: Lazy<ReentrantMutex<RefCell<Maybe<StderrRaw>>>> = Lazy::new();
     return Stderr {
-        inner: unsafe {
-            INSTANCE.get(stderr_init).expect("cannot access stderr during shutdown")
-        },
+        inner: INSTANCE.get(stderr_init).expect("cannot access stderr during shutdown"),
     };
 
     fn stderr_init() -> Arc<ReentrantMutex<RefCell<Maybe<StderrRaw>>>> {
@@ -663,7 +669,7 @@ impl Stderr {
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn lock(&self) -> StderrLock<'_> {
-        StderrLock { inner: self.inner.lock().unwrap_or_else(|e| e.into_inner()) }
+        StderrLock { inner: self.inner.lock() }
     }
 }
 
@@ -692,6 +698,12 @@ impl Write for Stderr {
         self.lock().write_fmt(args)
     }
 }
+
+#[stable(feature = "rust1", since = "1.0.0")]
+impl UnwindSafe for Stderr {}
+#[stable(feature = "rust1", since = "1.0.0")]
+impl RefUnwindSafe for Stderr {}
+
 #[stable(feature = "rust1", since = "1.0.0")]
 impl Write for StderrLock<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
@@ -711,6 +723,11 @@ impl fmt::Debug for StderrLock<'_> {
         f.pad("StderrLock { .. }")
     }
 }
+
+#[stable(feature = "rust1", since = "1.0.0")]
+impl UnwindSafe for StderrLock<'_> {}
+#[stable(feature = "rust1", since = "1.0.0")]
+impl RefUnwindSafe for StderrLock<'_> {}
 
 /// Resets the thread-local stderr handle to the specified writer
 ///
@@ -816,7 +833,6 @@ pub use realstd::io::{_eprint, _print};
 
 #[cfg(test)]
 mod tests {
-    use crate::panic::{UnwindSafe, RefUnwindSafe};
     use crate::thread;
     use super::*;
 

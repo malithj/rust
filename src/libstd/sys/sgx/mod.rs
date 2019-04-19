@@ -8,27 +8,24 @@ use crate::os::raw::c_char;
 use crate::sync::atomic::{AtomicBool, Ordering};
 
 pub mod abi;
-mod waitqueue;
+mod spinmutex;
 
 pub mod alloc;
 pub mod args;
 #[cfg(feature = "backtrace")]
 pub mod backtrace;
 pub mod cmath;
-pub mod condvar;
 pub mod env;
 pub mod ext;
 pub mod fd;
 pub mod fs;
 pub mod io;
 pub mod memchr;
-pub mod mutex;
 pub mod net;
 pub mod os;
 pub mod path;
 pub mod pipe;
 pub mod process;
-pub mod rwlock;
 pub mod stack_overflow;
 pub mod thread;
 pub mod thread_local;

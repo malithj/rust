@@ -1,12 +1,10 @@
 use crate::cell::Cell;
 use crate::ptr;
-use crate::sync::Arc;
+use crate::sync::{Arc, RawMutex};
 use crate::sys_common;
-use crate::sys_common::mutex::Mutex;
 
 pub struct Lazy<T> {
-    // We never call `lock.init()`, so it is UB to attempt to acquire this mutex reentrantly!
-    lock: Mutex,
+    lock: RawMutex,
     ptr: Cell<*mut Arc<T>>,
 }
 
@@ -18,24 +16,24 @@ unsafe impl<T> Sync for Lazy<T> {}
 impl<T> Lazy<T> {
     pub const fn new() -> Lazy<T> {
         Lazy {
-            lock: Mutex::new(),
+            lock: RawMutex::new(),
             ptr: Cell::new(ptr::null_mut()),
         }
     }
 }
 
 impl<T: Send + Sync + 'static> Lazy<T> {
-    /// Safety: `init` must not call `get` on the variable that is being
-    /// initialized.
-    pub unsafe fn get(&'static self, init: fn() -> Arc<T>) -> Option<Arc<T>> {
+    /// Warning: `init` must not call `get` on the variable that is being
+    /// initialized. Doing so will cause a deadlock.
+    pub fn get(&'static self, init: fn() -> Arc<T>) -> Option<Arc<T>> {
         let _guard = self.lock.lock();
         let ptr = self.ptr.get();
         if ptr.is_null() {
-            Some(self.init(init))
+            Some(unsafe { self.init(init) })
         } else if ptr == done() {
             None
         } else {
-            Some((*ptr).clone())
+            Some(unsafe { (*ptr).clone() })
         }
     }
 
